@@ -398,50 +398,6 @@ const handleForwardVisible = () =>
         )}
         </div>
 
-        {/* Batch forward progress bar */}
-        {batchForwardProgress && (
-          <div className="w-full bg-dark-800 border border-dark-600 rounded-lg p-3 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-white">
-                {batchForwardProgress.isComplete ? 'Batch Forward Complete' : 'Batch Forwarding...'}
-              </span>
-              {!batchForwardProgress.isComplete && batchForwarding && (
-                <Loader2 className="w-4 h-4 animate-spin text-accent-400" />
-              )}
-            </div>
-            <div className="w-full bg-dark-700 rounded-full h-2.5 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${
-                  batchForwardProgress.isComplete ? 'bg-green-500' : 'bg-accent-400'
-                }`}
-                style={{ width: `${batchForwardProgress.total > 0 ? (batchForwardProgress.forwarded / batchForwardProgress.total) * 100 : 0}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
-              <span>{batchForwardProgress.forwarded} / {batchForwardProgress.total} forwarded</span>
-              <span>{batchForwardProgress.remaining} remaining</span>
-            </div>
-            {batchForwardProgress.errors.length > 0 && (
-              <details className="mt-2">
-                <summary className="text-xs text-red-400 cursor-pointer">Errors ({batchForwardProgress.errors.length})</summary>
-                <ul className="text-xs text-red-300 mt-1 max-h-32 overflow-auto">
-                  {batchForwardProgress.errors.slice(0, 10).map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {batchForwardProgress.isComplete && batchForwardProgress.remaining > 0 && (
-              <button
-                className="btn-primary text-xs mt-2 w-full"
-                onClick={handleBatchForwardResume}
-                disabled={batchForwarding}
-              >
-                <RotateCcw className="w-4 h-4" />
-                Resume ({batchForwardProgress.remaining} remaining)
-              </button>
-            )}
-          </div>
         {batchForwardProgress && (
           <div className="w-full bg-dark-800 border border-dark-600 rounded-lg p-3 mb-4">
             <div className="flex items-center justify-between mb-2">
