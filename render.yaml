@@ -14,3 +14,5 @@ services:
         generateValue: true
       - key: ENCRYPTION_KEY
         generateValue: true
+      - key: LOG_LEVEL
+        value: INFO

@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from app.database.models import get_db
 from app.schemas.models import HistoryOut
+from config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/history", tags=["history"])

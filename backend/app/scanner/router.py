@@ -25,9 +25,6 @@ def _get_scanner():
     if _scanner is None or _scanner_client_id != current_client_id:
         _scanner = ChatScanner(client_manager.client)
         _scanner_client_id = current_client_id
-        # Also update reference in auth.client for cleanup on disconnect
-        from app.auth import client as auth_client
-        auth_client._set_scanner_reference(_scanner)
     return _scanner
 
 

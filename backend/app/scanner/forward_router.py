@@ -55,8 +55,6 @@ async def _forward_or_reupload(
     """Try forwarding a message; fall back to download+upload if chat is protected."""
 
     # --- Method 1: Try native forward ---
-    # First, try to use the stored access_hash for a proper InputPeerChannel,
-    # because get_input_entity cache may be empty (e.g. after restart).
     peer = None
     if access_hash and chat_id < 0:
         channel_id = -chat_id - 1000000000000 if chat_id < -1000000000000 else -chat_id
@@ -125,13 +123,12 @@ async def forward_chat_pdfs(
 
 
 async def _forward_chat_docs(
-    chat_id: int, 
-    limit: int = 100, 
-    offset: int = 0, 
+    chat_id: int,
+    limit: int = 100,
+    offset: int = 0,
     only_pdfs: bool = False,
-    enable_retry: bool = True
 ) -> dict:
-    """Forward documents from a chat in batches with enhanced error handling and monitoring."""
+    """Forward documents from a chat in batches with enhanced error handling."""
     if not client_manager.is_connected or not client_manager.is_authenticated:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -143,7 +140,7 @@ async def _forward_chat_docs(
     try:
         # Count total documents to forward
         count_sql = "SELECT COUNT(*) as cnt FROM documents WHERE chat_id=?"
-        params = [chat_id]
+        params: list = [chat_id]
         if only_pdfs:
             count_sql += " AND (file_ext='pdf' OR file_name LIKE '%.pdf')"
         count_row = await db.fetchone(count_sql, *params)
@@ -155,52 +152,42 @@ async def _forward_chat_docs(
 
         # Get batch of documents with proper ordering
         sql = "SELECT id, message_id, file_name, access_hash FROM documents WHERE chat_id=?"
-        params = [chat_id]
+        sql_params: list = [chat_id]
         if only_pdfs:
             sql += " AND (file_ext='pdf' OR file_name LIKE '%.pdf')"
         sql += " ORDER BY message_id ASC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-        rows = await db.fetchall(sql, *params)
+        sql_params.extend([limit, offset])
+        rows = await db.fetchall(sql, *sql_params)
 
-        # Log batch info for monitoring
-        logger.info("Starting forward batch for chat %s: offset=%d, batch_size=%d, total=%d", 
-                   chat_id, offset, len(rows), total)
+        logger.info(
+            "Starting forward batch for chat %s: offset=%d, batch_size=%d, total=%d",
+            chat_id, offset, len(rows), total,
+        )
 
-        # Enhanced error tracking per batch
-        batch_errors = []
+        batch_errors: list[str] = []
         successful_forwards = 0
-
-        # Process the batch with enhanced error handling
         access_hash = rows[0]["access_hash"] if rows else None
-        for i, r in enumerate(rows):
+
+        for r in rows:
             try:
                 err = await _forward_or_reupload(client, chat_id, r["message_id"], access_hash, r["file_name"])
                 if err:
                     batch_errors.append(f"msg {r['message_id']} ({r['file_name'][:40]}): {err}")
-                    # Log error for monitoring
                     logger.error("Forward failed for chat %s, msg %s: %s", chat_id, r["message_id"], err)
                 else:
                     successful_forwards += 1
-                    # Mark as forwarded in database
                     await db.execute("UPDATE documents SET forwarded=1 WHERE id=?", r["id"])
             except Exception as batch_err:
                 batch_err_msg = f"msg {r['message_id']} ({r['file_name'][:40]}): {str(batch_err)}"
                 batch_errors.append(batch_err_msg)
                 logger.error("Batch processing error for chat %s, msg %s: %s", chat_id, r["message_id"], batch_err)
 
-        # Commit the batch updates
         await db.commit()
 
-        # Calculate batch statistics
-        batch_percentage = (offset + successful_forwards) / total * 100 if total > 0 else 0
-        logger.info("Batch forward complete for chat %s: %d/%d forward (%d%%), %d errors", 
-                   chat_id, offset + successful_forwards, total, batch_percentage, len(batch_errors))
-
-        # Return batch result with next offset calculation
         next_offset = offset + limit if offset + len(rows) < total else None
         remaining = max(0, total - (offset + len(rows)))
 
-        result = {
+        return {
             "forwarded": successful_forwards,
             "total": total,
             "errors": batch_errors,
@@ -209,36 +196,8 @@ async def _forward_chat_docs(
             "batch_offset": offset,
             "batch_size": len(rows),
         }
-
-        # Log summary for large batches
-        if total > 1000:
-            logger.info("Large-scale forward operation: Chat %s - %d/%d documents (%d%%)", 
-                       chat_id, offset + successful_forwards, total, batch_percentage)
-
-        return result
-
     finally:
         await db.close()
-
-    if not rows:
-        return {"forwarded": 0, "total": total, "errors": [], "next_offset": None, "remaining": 0}
-
-    forwarded = 0
-    errors: list[str] = []
-    access_hash = rows[0]["access_hash"] if rows else None
-    for r in rows:
-        err = await _forward_or_reupload(client, chat_id, r["message_id"], access_hash, r["file_name"])
-        if err:
-            errors.append(f"msg {r['message_id']} ({r['file_name'][:40]}): {err}")
-        else:
-            forwarded += 1
-            # Mark as forwarded in DB
-            await _mark_forwarded(r["id"])
-
-    next_offset = offset + len(rows) if offset + len(rows) < total else None
-    remaining = max(0, total - (offset + len(rows)))
-
-    return {"forwarded": forwarded, "total": total, "errors": errors, "next_offset": next_offset, "remaining": remaining}
 
 
 async def _mark_forwarded(doc_id: int) -> None:
@@ -254,9 +213,10 @@ async def _mark_forwarded(doc_id: int) -> None:
 async def forward_all_pdfs(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    only_pdfs: bool = Query(True),
 ):
     """Forward all PDFs across all chats in batches. Use offset to resume."""
-    if (!client_manager.is_connected or not client_manager.is_authenticated):
+    if not client_manager.is_connected or not client_manager.is_authenticated:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     client = client_manager.client
@@ -265,37 +225,29 @@ async def forward_all_pdfs(
 
     db = await get_db()
     try:
-        # Count total documents to forward
-        count_sql = "SELECT COUNT(*) as cnt FROM documents"
-        params = []
         if only_pdfs:
-            count_sql += " WHERE file_ext='pdf' OR file_name LIKE '%.pdf'"
-        count_row = await db.fetchone(count_sql, *params)
+            count_sql = "SELECT COUNT(*) as cnt FROM documents WHERE file_ext='pdf' OR file_name LIKE '%.pdf'"
+            count_row = await db.fetchone(count_sql)
+        else:
+            count_row = await db.fetchone("SELECT COUNT(*) as cnt FROM documents WHERE forwarded=0")
         total = count_row["cnt"] if count_row else 0
 
         if total == 0:
             msg = "No PDFs found in any chat" if only_pdfs else "No documents found in any chat"
             return {"forwarded": 0, "total": 0, "errors": [msg], "next_offset": None, "remaining": 0}
 
-        # Get batch
         if only_pdfs:
             rows = await db.fetchall(
-                "SELECT id, chat_id, message_id, file_name, access_hash FROM documents WHERE file_ext='pdf' OR file_name LIKE '%.pdf' ORDER BY chat_id, message_id ASC LIMIT ? OFFSET ?",
+                "SELECT id, chat_id, message_id, file_name, access_hash FROM documents "
+                "WHERE file_ext='pdf' OR file_name LIKE '%.pdf' ORDER BY chat_id, message_id ASC LIMIT ? OFFSET ?",
                 limit, offset,
             )
         else:
             rows = await db.fetchall(
-                "SELECT id, chat_id, message_id, file_name, access_hash FROM documents WHERE forwarded=0 ORDER BY chat_id, message_id ASC LIMIT ? OFFSET ?",
+                "SELECT id, chat_id, message_id, file_name, access_hash FROM documents "
+                "WHERE forwarded=0 ORDER BY chat_id, message_id ASC LIMIT ? OFFSET ?",
                 limit, offset,
             )
-
-        # Log operation start for large batches
-        if total > 1000:
-            op_type = "PDFs" if only_pdfs else "all documents"
-            logger.info("Large-scale %s forward operation: %d %s across all chats (total: %d, batch: %d)", 
-                       "forwarding", op_type, op_type, total, len(rows))
-    finally:
-        await db.close()
     finally:
         await db.close()
 
@@ -327,7 +279,7 @@ async def get_forward_progress(
     db = await get_db()
     try:
         sql = "SELECT COUNT(*) as cnt FROM documents WHERE forwarded=0"
-        params = []
+        params: list = []
         if chat_id is not None:
             sql += " AND chat_id=?"
             params.append(chat_id)
@@ -336,9 +288,8 @@ async def get_forward_progress(
         row = await db.fetchone(sql, *params)
         pending = row["cnt"] if row else 0
 
-        # Also get total for context
         sql_total = "SELECT COUNT(*) as cnt FROM documents"
-        params_total = []
+        params_total: list = []
         if chat_id is not None:
             sql_total += " WHERE chat_id=?"
             params_total.append(chat_id)
