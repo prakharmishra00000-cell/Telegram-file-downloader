@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-electron/
+release/
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.session
+sessions/
+data/
+downloads/
+.DS_Store
+Thumbs.db
