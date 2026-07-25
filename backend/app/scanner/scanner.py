@@ -131,15 +131,27 @@ class ChatScanner:
                         )
                         new_docs = documents[last_store_idx:]
                         for doc in new_docs:
-                            await db.execute(
-                                """INSERT OR IGNORE INTO documents
-                                (chat_id, message_id, file_name, file_ext, mime_type, file_size, file_reference, access_hash, sender_id, sender_name, message_date)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                                doc["chat_id"], doc["message_id"], doc["file_name"], doc["file_ext"],
-                                doc["mime_type"], doc["file_size"], doc.get("file_reference"),
-                                doc.get("access_hash"), doc.get("sender_id"), doc["sender_name"],
-                                doc["message_date"],
-                            )
+                            if db.dialect == "postgres":
+                                await db.execute(
+                                    """INSERT INTO documents
+                                    (chat_id, message_id, file_name, file_ext, mime_type, file_size, file_reference, access_hash, sender_id, sender_name, message_date)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    ON CONFLICT (chat_id, message_id) DO NOTHING""",
+                                    doc["chat_id"], doc["message_id"], doc["file_name"], doc["file_ext"],
+                                    doc["mime_type"], doc["file_size"], doc.get("file_reference"),
+                                    doc.get("access_hash"), doc.get("sender_id"), doc["sender_name"],
+                                    doc["message_date"],
+                                )
+                            else:
+                                await db.execute(
+                                    """INSERT OR IGNORE INTO documents
+                                    (chat_id, message_id, file_name, file_ext, mime_type, file_size, file_reference, access_hash, sender_id, sender_name, message_date)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                    doc["chat_id"], doc["message_id"], doc["file_name"], doc["file_ext"],
+                                    doc["mime_type"], doc["file_size"], doc.get("file_reference"),
+                                    doc.get("access_hash"), doc.get("sender_id"), doc["sender_name"],
+                                    doc["message_date"],
+                                )
                         last_store_idx = len(documents)
                         await db.commit()
                     except Exception:
@@ -150,15 +162,27 @@ class ChatScanner:
             try:
                 remaining = documents[last_store_idx:]
                 for doc in remaining:
-                    await db.execute(
-                        """INSERT OR IGNORE INTO documents
-                        (chat_id, message_id, file_name, file_ext, mime_type, file_size, file_reference, access_hash, sender_id, sender_name, message_date)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        doc["chat_id"], doc["message_id"], doc["file_name"], doc["file_ext"],
-                        doc["mime_type"], doc["file_size"], doc.get("file_reference"),
-                        doc.get("access_hash"), doc.get("sender_id"), doc["sender_name"],
-                        doc["message_date"],
-                    )
+                    if db.dialect == "postgres":
+                        await db.execute(
+                            """INSERT INTO documents
+                            (chat_id, message_id, file_name, file_ext, mime_type, file_size, file_reference, access_hash, sender_id, sender_name, message_date)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (chat_id, message_id) DO NOTHING""",
+                            doc["chat_id"], doc["message_id"], doc["file_name"], doc["file_ext"],
+                            doc["mime_type"], doc["file_size"], doc.get("file_reference"),
+                            doc.get("access_hash"), doc.get("sender_id"), doc["sender_name"],
+                            doc["message_date"],
+                        )
+                    else:
+                        await db.execute(
+                            """INSERT OR IGNORE INTO documents
+                            (chat_id, message_id, file_name, file_ext, mime_type, file_size, file_reference, access_hash, sender_id, sender_name, message_date)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            doc["chat_id"], doc["message_id"], doc["file_name"], doc["file_ext"],
+                            doc["mime_type"], doc["file_size"], doc.get("file_reference"),
+                            doc.get("access_hash"), doc.get("sender_id"), doc["sender_name"],
+                            doc["message_date"],
+                        )
                 await db.commit()
             except Exception:
                 pass
