@@ -9,7 +9,7 @@ import {
   HardDrive,
 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
-import { api } from '../api/client'
+import { api, isDemoMode } from '../api/client'
 
 const navItems = [
   { path: '/chats', label: 'Chats', icon: MessageSquare },
@@ -53,12 +53,19 @@ export default function Layout({ children, onLogout }: { children: React.ReactNo
         </div>
 
         {/* User info */}
-        <div className="px-4 py-3 border-b border-dark-700">
-          <p className="text-xs text-gray-400">
-            {auth.first_name || auth.phone || 'User'}
-          </p>
-          {auth.username && (
-            <p className="text-xs text-gray-600">@{auth.username}</p>
+        <div className="px-4 py-3 border-b border-dark-700 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-300">
+              {auth.first_name || auth.phone || 'User'}
+            </p>
+            {auth.username && (
+              <p className="text-xs text-gray-500">@{auth.username}</p>
+            )}
+          </div>
+          {isDemoMode() && (
+            <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
+              Live Demo
+            </span>
           )}
         </div>
 

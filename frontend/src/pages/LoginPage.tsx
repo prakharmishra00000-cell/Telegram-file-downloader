@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { HardDrive, AlertCircle, CheckCircle, Loader2, ArrowLeft } from 'lucide-react'
-import { api } from '../api/client'
+import { HardDrive, AlertCircle, CheckCircle, Loader2, ArrowLeft, Sparkles } from 'lucide-react'
+import { api, setDemoMode } from '../api/client'
 import { useAppStore } from '../store/appStore'
 
 interface Props {
@@ -21,6 +21,20 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const handleDemoBypass = () => {
+    setDemoMode(true)
+    const mockStatus = {
+      authenticated: true,
+      user_id: 1002948,
+      username: 'prakhar_mishra',
+      first_name: 'Prakhar Mishra',
+      phone: '+91 98765 43210',
+    }
+    setAuth(mockStatus)
+    addLog('Connected via Demo Telegram Account')
+    onLogin?.(mockStatus)
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -101,6 +115,22 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
               <ArrowLeft className="w-4 h-4 inline mr-1" /> Back to app login
             </button>
           )}
+
+          {/* Quick Demo Bypass */}
+          <div className="mb-4 p-3 rounded-lg bg-accent-600/10 border border-accent-500/20">
+            <p className="text-xs text-gray-300 mb-2">
+              Evaluating the project? Skip Telegram credentials and explore the full live interface:
+            </p>
+            <button
+              type="button"
+              onClick={handleDemoBypass}
+              className="w-full py-2 px-3 bg-accent-600 hover:bg-accent-500 text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Explore With Demo Account</span>
+            </button>
+          </div>
+
           {step === 'credentials' && (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
