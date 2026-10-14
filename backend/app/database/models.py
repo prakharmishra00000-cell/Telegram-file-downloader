@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS users (
     encrypted_api_id TEXT,
     encrypted_api_hash TEXT,
     encrypted_phone TEXT,
+    encrypted_session_string TEXT,
     telegram_authed INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     last_seen TEXT
@@ -203,6 +204,7 @@ CREATE TABLE IF NOT EXISTS users (
     encrypted_api_id TEXT,
     encrypted_api_hash TEXT,
     encrypted_phone TEXT,
+    encrypted_session_string TEXT,
     telegram_authed INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     last_seen TEXT
@@ -220,6 +222,15 @@ async def init_db() -> None:
     await db.connect()
     schema = _PG_SCHEMA if db.dialect == "postgres" else _SQLITE_SCHEMA
     await db.execute_script(schema)
+    # Ensure existing installations get the encrypted_session_string column
+    try:
+        if db.dialect == "postgres":
+            await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS encrypted_session_string TEXT")
+        else:
+            await db.execute("ALTER TABLE users ADD COLUMN encrypted_session_string TEXT")
+        await db.commit()
+    except Exception:
+        pass
     await db.close()
     logger.info("Database initialized (dialect=%s)", db.dialect)
 

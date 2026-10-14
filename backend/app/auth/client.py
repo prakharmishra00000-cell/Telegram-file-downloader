@@ -3,6 +3,7 @@ import logging
 from typing import Optional
 
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telethon.errors import (
     SessionPasswordNeededError,
     PhoneCodeInvalidError,
@@ -72,7 +73,14 @@ class TelegramClientManager:
     def get_client(self, user_id: int) -> Optional[TelegramClient]:
         return self._get_state(user_id).client
 
-    async def restore_session(self, user_id: int, api_id: int, api_hash: str, phone: str) -> dict:
+    async def restore_session(
+        self,
+        user_id: int,
+        api_id: int,
+        api_hash: str,
+        phone: str,
+        session_string: Optional[str] = None,
+    ) -> dict:
         """Restore a Telegram session for a user without sending a code."""
         async with self._lock:
             s = self._get_state(user_id)
@@ -80,24 +88,48 @@ class TelegramClientManager:
             s.api_id = api_id
             s.api_hash = api_hash
             s.phone = phone
-            session_path = session_manager.session_path(phone, user_id)
+
+            # Prefer StringSession if available, fallback to file session
+            telethon_session: any
+            if session_string:
+                telethon_session = StringSession(session_string)
+            else:
+                session_path = session_manager.session_path(phone, user_id)
+                telethon_session = str(session_path)
+
             s.client = TelegramClient(
-                str(session_path), api_id, api_hash,
+                telethon_session,
+                api_id,
+                api_hash,
                 device_model="Telegram Document Downloader",
-                system_version="1.0", app_version="1.0.0",
+                system_version="1.0",
+                app_version="1.0.0",
             )
             await s.client.connect()
             if await s.client.is_user_authorized():
                 me = await s.client.get_me()
                 logger.info("User %d session restored as %s", user_id, me.phone)
                 self.set_active_user(user_id)
-                return {"authenticated": True, "phone": me.phone, "telegram_user_id": me.id, "username": me.username, "first_name": me.first_name}
+                saved_session = s.client.session.save() if hasattr(s.client.session, "save") else ""
+                return {
+                    "authenticated": True,
+                    "phone": me.phone,
+                    "telegram_user_id": me.id,
+                    "username": me.username,
+                    "first_name": me.first_name,
+                    "session_string": saved_session,
+                }
             await s.client.disconnect()
             s.client = None
             return {"authenticated": False, "reason": "session_expired"}
 
     async def start(
-        self, user_id: int, api_id: int, api_hash: str, phone: str
+        self,
+        user_id: int,
+        api_id: int,
+        api_hash: str,
+        phone: str,
+        session_string: Optional[str] = None,
     ) -> dict:
         async with self._lock:
             s = self._get_state(user_id)
@@ -106,9 +138,15 @@ class TelegramClientManager:
             s.api_hash = api_hash
             s.phone = phone
 
-            session_path = session_manager.session_path(phone, user_id)
+            telethon_session: any
+            if session_string:
+                telethon_session = StringSession(session_string)
+            else:
+                session_path = session_manager.session_path(phone, user_id)
+                telethon_session = str(session_path)
+
             s.client = TelegramClient(
-                str(session_path),
+                telethon_session,
                 api_id,
                 api_hash,
                 device_model="Telegram Document Downloader",
@@ -121,12 +159,14 @@ class TelegramClientManager:
                 me = await s.client.get_me()
                 logger.info("User %d authenticated as %s", user_id, me.phone)
                 self.set_active_user(user_id)
+                saved_session = s.client.session.save() if hasattr(s.client.session, "save") else ""
                 return {
                     "authenticated": True,
                     "phone": me.phone,
                     "telegram_user_id": me.id,
                     "username": me.username,
                     "first_name": me.first_name,
+                    "session_string": saved_session,
                 }
 
             await s.client.send_code_request(phone)
@@ -160,12 +200,14 @@ class TelegramClientManager:
                 me = await s.client.get_me()
                 logger.info("User %d authenticated as %s", user_id, me.phone)
                 self.set_active_user(user_id)
+                saved_session = s.client.session.save() if hasattr(s.client.session, "save") else ""
                 return {
                     "authenticated": True,
                     "phone": me.phone,
                     "telegram_user_id": me.id,
                     "username": me.username,
                     "first_name": me.first_name,
+                    "session_string": saved_session,
                 }
             except SessionPasswordNeededError:
                 s.waiting_code = False

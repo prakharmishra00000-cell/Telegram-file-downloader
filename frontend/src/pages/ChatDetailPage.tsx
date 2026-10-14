@@ -20,6 +20,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Sparkles,
 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { api } from '../api/client'
@@ -81,6 +82,12 @@ export default function ChatDetailPage() {
     batchSize: number
   } | null>(null)
   const batchForwardRef = useRef(false)
+
+  // AI Document Intelligence State
+  const [aiModalDoc, setAiModalDoc] = useState<Document | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiResult, setAiResult] = useState<any | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   const cid = parseInt(chatId || '0')
   const prevStatusRef = useRef<string>('')
@@ -203,6 +210,28 @@ export default function ChatDetailPage() {
     addLog(`Downloading ${docs.length} files to your PC`)
     setSelected(new Set())
     setSelectAll(false)
+  }
+
+  const handleAiAnalyze = async (doc: Document) => {
+    setAiModalDoc(doc)
+    setAiLoading(true)
+    setAiResult(null)
+    setAiError(null)
+    try {
+      const res = await api.aiAnalyzeDocument({
+        document_id: doc.id,
+        file_name: doc.file_name,
+        file_size: doc.file_size,
+        file_ext: doc.file_ext,
+        chat_name: dialog?.name,
+      })
+      setAiResult(res)
+      addLog(`AI Analysis completed for "${doc.file_name}"`)
+    } catch (err: any) {
+      setAiError(err.message || 'AI Analysis failed')
+    } finally {
+      setAiLoading(false)
+    }
   }
 
   const handleDownloadAllVisible = async () => {
@@ -398,6 +427,7 @@ const handleForwardVisible = () =>
         )}
         </div>
 
+        {/* Forward progress bar */}
         {batchForwardProgress && (
           <div className="w-full bg-dark-800 border border-dark-600 rounded-lg p-3 mb-4">
             <div className="flex items-center justify-between mb-2">
@@ -637,6 +667,13 @@ const handleForwardVisible = () =>
                 )}
               </span>
               <button
+                className="p-1 text-gray-500 hover:text-purple-400 transition-colors"
+                onClick={(e) => { e.stopPropagation(); handleAiAnalyze(doc) }}
+                title="AI Document Summary & Insights (Gemini)"
+              >
+                <Sparkles className="w-4 h-4 text-purple-400" />
+              </button>
+              <button
                 className="p-1 text-gray-500 hover:text-green-400 transition-colors"
                 onClick={(e) => { e.stopPropagation(); handleDownload(doc.chat_id, doc.message_id, doc.file_name) }}
                 title="Download to your PC"
@@ -692,6 +729,128 @@ const handleForwardVisible = () =>
           </div>
         )}
       </div>
+
+      {/* AI Document Intelligence Modal */}
+      {aiModalDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="card w-full max-w-xl max-h-[85vh] flex flex-col bg-dark-900 border border-purple-500/30 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-start justify-between p-5 border-b border-dark-700 bg-purple-950/20">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                    AI Document Intelligence
+                    <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30">Gemini</span>
+                  </h3>
+                  <p className="text-xs text-gray-400 truncate max-w-md">{aiModalDoc.file_name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAiModalDoc(null)}
+                className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-dark-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {aiLoading ? (
+                <div className="py-12 text-center space-y-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-400 mx-auto" />
+                  <p className="text-sm text-gray-300 font-medium">Analyzing document with Google Gemini...</p>
+                  <p className="text-xs text-gray-500">Synthesizing topic, summary, and classification</p>
+                </div>
+              ) : aiError ? (
+                <div className="p-4 bg-red-950/40 border border-red-800/40 rounded-xl text-red-300 text-sm">
+                  {aiError}
+                </div>
+              ) : aiResult ? (
+                <div className="space-y-4">
+                  {/* Category & Stats */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-purple-500/20 border border-purple-500/40 text-purple-300">
+                      {aiResult.category || 'General Document'}
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-dark-800 text-gray-400 font-mono">
+                      {formatBytes(aiModalDoc.file_size)}
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-dark-800 text-gray-400 uppercase font-mono">
+                      .{aiModalDoc.file_ext}
+                    </span>
+                  </div>
+
+                  {/* Summary */}
+                  <div className="p-3.5 bg-dark-800/60 border border-dark-700 rounded-xl">
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Executive Summary</h4>
+                    <p className="text-sm text-gray-200 leading-relaxed">{aiResult.summary}</p>
+                  </div>
+
+                  {/* Key Takeaways */}
+                  {aiResult.key_points && aiResult.key_points.length > 0 && (
+                    <div className="p-3.5 bg-dark-800/60 border border-dark-700 rounded-xl">
+                      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Key Takeaways</h4>
+                      <ul className="space-y-1.5">
+                        {aiResult.key_points.map((pt: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300 flex items-start gap-2">
+                            <span className="text-purple-400 font-bold">•</span>
+                            <span>{pt}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Use case */}
+                  {aiResult.use_case && (
+                    <div className="p-3 bg-purple-900/10 border border-purple-500/20 rounded-xl text-xs text-purple-200">
+                      <span className="font-semibold text-purple-300">Recommended Use: </span>
+                      {aiResult.use_case}
+                    </div>
+                  )}
+
+                  {/* Tags */}
+                  {aiResult.tags && aiResult.tags.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Smart Tags</h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {aiResult.tags.map((t: string, idx: number) => (
+                          <span key={idx} className="text-xs px-2 py-0.5 rounded-full bg-dark-800 text-gray-300 border border-dark-700">
+                            #{t.replace(/^#/, '')}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-dark-700 bg-dark-900/50 flex justify-end gap-2">
+              <button
+                className="btn-ghost text-xs"
+                onClick={() => setAiModalDoc(null)}
+              >
+                Close
+              </button>
+              <button
+                className="btn-primary text-xs bg-purple-600 hover:bg-purple-500 border-none"
+                onClick={() => {
+                  handleDownload(aiModalDoc.chat_id, aiModalDoc.message_id, aiModalDoc.file_name)
+                  setAiModalDoc(null)
+                }}
+              >
+                <Download className="w-4 h-4 mr-1 inline" />
+                Download File
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

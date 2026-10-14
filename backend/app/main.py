@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     db = await get_db()
     try:
         rows = await db.fetchall(
-            "SELECT id, encrypted_api_id, encrypted_api_hash, encrypted_phone FROM users WHERE telegram_authed=1"
+            "SELECT id, encrypted_api_id, encrypted_api_hash, encrypted_phone, encrypted_session_string FROM users WHERE telegram_authed=1"
         )
         for row in rows:
             try:
@@ -41,12 +41,13 @@ async def lifespan(app: FastAPI):
                 api_id_s = decrypt_value(row["encrypted_api_id"] or "")
                 api_hash = decrypt_value(row["encrypted_api_hash"] or "")
                 phone = decrypt_value(row["encrypted_phone"] or "")
+                session_str = decrypt_value(row.get("encrypted_session_string") or "")
                 if api_id_s and api_hash and phone:
                     result = await client_manager.restore_session(
-                        row["id"], int(api_id_s), api_hash, phone
+                        row["id"], int(api_id_s), api_hash, phone, session_string=session_str
                     )
                     if result.get("authenticated"):
-                        logger.info("Session restored for user %d", row["id"])
+                        logger.info("Session permanently restored for user %d", row["id"])
             except Exception as e:
                 logger.warning("Session restore failed for user %d: %s", row["id"], e)
     finally:
@@ -124,12 +125,15 @@ from app.scanner.forward_router import router as forward_router
 from app.downloader.router import router as download_router
 from app.history.router import router as history_router
 
+from app.ai.router import router as ai_router
+
 app.include_router(auth_router, dependencies=[Depends(get_current_user)])
 app.include_router(user_router)
 app.include_router(scanner_router, dependencies=[Depends(get_current_user)])
 app.include_router(forward_router, dependencies=[Depends(get_current_user)])
 app.include_router(download_router, dependencies=[Depends(get_current_user)])
 app.include_router(history_router, dependencies=[Depends(get_current_user)])
+app.include_router(ai_router, dependencies=[Depends(get_current_user)])
 
 
 # Serve built frontend in production

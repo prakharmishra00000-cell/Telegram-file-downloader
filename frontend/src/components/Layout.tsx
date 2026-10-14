@@ -46,8 +46,10 @@ export default function Layout({ children, onLogout }: { children: React.ReactNo
               <HardDrive className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold text-white">TG Downloader</h1>
-              <p className="text-xs text-gray-500">Document Downloader</p>
+              <h1 className="text-sm font-semibold text-white flex items-center gap-1.5">
+                TG Downloader <span className="bg-purple-900/60 border border-purple-500/40 text-purple-300 text-[10px] font-mono px-1.5 py-0.5 rounded">AI</span>
+              </h1>
+              <p className="text-xs text-gray-500">Document Intelligence</p>
             </div>
           </div>
         </div>

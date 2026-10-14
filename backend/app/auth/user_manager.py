@@ -177,7 +177,7 @@ async def get_user(user_id: int) -> Optional[dict]:
     db = await get_db()
     try:
         row = await db.fetchone(
-            "SELECT id, username, encrypted_api_id, encrypted_api_hash, encrypted_phone, telegram_authed, created_at, last_seen FROM users WHERE id=?",
+            "SELECT id, username, encrypted_api_id, encrypted_api_hash, encrypted_phone, encrypted_session_string, telegram_authed, created_at, last_seen FROM users WHERE id=?",
             user_id,
         )
         if not row:
@@ -186,20 +186,38 @@ async def get_user(user_id: int) -> Optional[dict]:
         row["api_id"] = decrypt_value(row.pop("encrypted_api_id") or "")
         row["api_hash"] = decrypt_value(row.pop("encrypted_api_hash") or "")
         row["phone"] = decrypt_value(row.pop("encrypted_phone") or "")
+        row["session_string"] = decrypt_value(row.pop("encrypted_session_string") or "")
         return row
     finally:
         await db.close()
 
 
 async def save_telegram_credentials(
-    user_id: int, api_id: int, api_hash: str, phone: str
+    user_id: int,
+    api_id: int,
+    api_hash: str,
+    phone: str,
+    telegram_authed: bool = True,
+    session_string: Optional[str] = None,
 ) -> None:
     db = await get_db()
     try:
-        await db.execute(
-            "UPDATE users SET encrypted_api_id=?, encrypted_api_hash=?, encrypted_phone=?, telegram_authed=1 WHERE id=?",
-            encrypt_value(str(api_id)), encrypt_value(api_hash), encrypt_value(phone), user_id,
-        )
+        enc_api_id = encrypt_value(str(api_id))
+        enc_api_hash = encrypt_value(api_hash)
+        enc_phone = encrypt_value(phone)
+        authed_val = 1 if telegram_authed else 0
+        if session_string:
+            enc_session = encrypt_value(session_string)
+            await db.execute(
+                "UPDATE users SET encrypted_api_id=?, encrypted_api_hash=?, encrypted_phone=?, encrypted_session_string=?, telegram_authed=? WHERE id=?",
+                enc_api_id, enc_api_hash, enc_phone, enc_session, authed_val, user_id,
+            )
+        else:
+            await db.execute(
+                "UPDATE users SET encrypted_api_id=?, encrypted_api_hash=?, encrypted_phone=?, telegram_authed=? WHERE id=?",
+                enc_api_id, enc_api_hash, enc_phone, authed_val, user_id,
+            )
         await db.commit()
+        logger.info("Saved Telegram credentials for user %d (authed=%s, has_session_str=%s)", user_id, telegram_authed, bool(session_string))
     finally:
         await db.close()
