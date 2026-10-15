@@ -96,12 +96,12 @@ async def login(req: LoginRequest, user=Depends(get_current_user)):
             api_id = struct.unpack('i', struct.pack('I', api_id))[0]
         elif api_id > 4294967295 or api_id < -2147483648:
             clean_digits = str(req.api_id).strip()
-            if len(clean_digits) >= 10:
+            if len(clean_digits) > 10:
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        "Invalid API ID: You entered a 10+ digit number. "
-                        "Telegram API ID must be your 7-9 digit App ID from https://my.telegram.org (e.g. 20401234), "
+                        "Invalid API ID: You entered an 11+ digit number. "
+                        "Telegram API ID must be your numeric App ID from https://my.telegram.org (up to 4294967295), "
                         "not your phone number."
                     ),
                 )

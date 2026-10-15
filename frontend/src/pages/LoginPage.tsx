@@ -47,16 +47,16 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
       const cleanHash = apiHash.trim()
 
       const digitsOnly = cleanApiId.replace(/\D/g, '')
-      if (cleanApiId.startsWith('+') || digitsOnly.length >= 10) {
+      if (cleanApiId.startsWith('+') || digitsOnly.length > 10) {
         setError(
-          'API ID must be your 7-9 digit App api_id from https://my.telegram.org (e.g. 20401234), not your phone number. Please enter your phone number in the Phone Number field below.'
+          'API ID must be your numeric App api_id from https://my.telegram.org (up to 10 digits), not your phone number. Please enter your phone number in the Phone Number field below.'
         )
         setLoading(false)
         return
       }
 
       const numId = parseInt(digitsOnly, 10)
-      if (isNaN(numId) || numId <= 0) {
+      if (isNaN(numId) || numId <= 0 || numId > 4294967295) {
         setError('Please enter a valid numeric API ID from https://my.telegram.org.')
         setLoading(false)
         return
@@ -158,7 +158,7 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Telegram API ID <span className="text-xs text-gray-500 font-normal">(7-9 digits from my.telegram.org)</span>
+                  Telegram API ID <span className="text-xs text-gray-500 font-normal">(numeric App ID from my.telegram.org)</span>
                 </label>
                 <input
                   type="text"
