@@ -94,21 +94,40 @@ PUBLIC_PATHS = {"/api/health", "/api/user/register", "/api/user/login"}
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
+    # Always allow CORS preflight OPTIONS requests to reach CORSMiddleware
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
     path = request.url.path
-    if path in PUBLIC_PATHS or path.startswith("/api/user/login") or path.startswith("/api/user/register"):
+    if (
+        path in PUBLIC_PATHS
+        or path.startswith("/api/user/login")
+        or path.startswith("/api/user/register")
+        or path.startswith("/api/docs")
+        or path.startswith("/openapi.json")
+    ):
         return await call_next(request)
 
     # All other /api/* paths need JWT
     if path.startswith("/api/"):
         auth_header = request.headers.get("Authorization", "")
+        origin = request.headers.get("origin", "")
         if not auth_header.startswith("Bearer "):
-            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+            res = JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+            if origin:
+                res.headers["Access-Control-Allow-Origin"] = origin
+                res.headers["Access-Control-Allow-Credentials"] = "true"
+            return res
         token = auth_header[7:]
         from app.auth.user_manager import decode_jwt
         from app.auth.client import client_manager
         payload = decode_jwt(token)
         if not payload:
-            return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
+            res = JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
+            if origin:
+                res.headers["Access-Control-Allow-Origin"] = origin
+                res.headers["Access-Control-Allow-Credentials"] = "true"
+            return res
         client_manager.set_active_user(payload["sub"])
         # Auto-reconnect Telethon client if disconnected
         if client_manager.client and not client_manager.client.is_connected():

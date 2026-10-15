@@ -42,11 +42,11 @@ function authHeaders(): Record<string, string> {
 async function request<T>(
   endpoint: string,
   options: RequestInit = {},
-  timeoutMs = 30000
+  timeoutMs = 60000
 ): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
-  const url = `${BASE_URL}${endpoint}`
+  const url = `${getApiBaseUrl()}${endpoint}`
   const config: RequestInit = {
     headers: { 'Content-Type': 'application/json', ...authHeaders(), ...options.headers },
     signal: controller.signal,
@@ -72,6 +72,14 @@ async function request<T>(
       return response.json()
     }
     return (await response.text()) as any
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      throw new Error('Connection timed out. The server may still be connecting to Telegram, please retry.')
+    }
+    if (err.message === 'Failed to fetch') {
+      throw new Error('Network error connecting to backend. Please wait a few seconds and retry.')
+    }
+    throw err
   } finally {
     clearTimeout(timer)
   }
