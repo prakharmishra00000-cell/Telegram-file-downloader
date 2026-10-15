@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { HardDrive, AlertCircle, Loader2, UserPlus, LogIn } from 'lucide-react'
-
-const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+import { getApiBaseUrl } from '../api/client'
 
 export default function AppLoginPage({ onLogin }: { onLogin: (token: string, telegramAuthed: boolean) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
@@ -15,7 +14,8 @@ export default function AppLoginPage({ onLogin }: { onLogin: (token: string, tel
     setError('')
     setLoading(true)
     try {
-      const endpoint = mode === 'login' ? `${API_BASE}/user/login` : `${API_BASE}/user/register`
+      const apiBase = getApiBaseUrl()
+      const endpoint = mode === 'login' ? `${apiBase}/user/login` : `${apiBase}/user/register`
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

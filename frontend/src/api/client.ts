@@ -1,4 +1,24 @@
-const BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+const RENDER_BACKEND_URL = 'https://telegram-file-downloader.onrender.com/api'
+
+export function getApiBaseUrl(): string {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/$/, '')
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    if (
+      host.includes('vercel.app') ||
+      host.includes('github.io') ||
+      host.includes('prakhar-mishra') ||
+      (!host.includes('localhost') && !host.includes('127.0.0.1'))
+    ) {
+      return RENDER_BACKEND_URL
+    }
+  }
+  return '/api'
+}
+
+const BASE_URL = getApiBaseUrl()
 
 let _authToken = ''
 let _isDemo = false

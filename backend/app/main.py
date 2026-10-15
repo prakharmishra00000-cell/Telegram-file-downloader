@@ -64,14 +64,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — restrict when PUBLIC_URL is set
-cors_origins = ["*"]
+# CORS configuration for local and cloud environments
+cors_origins = [
+    "https://telegram-file-downloader.vercel.app",
+    "https://prakhar-mishra-portfolio.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+]
 if settings.PUBLIC_URL:
-    cors_origins = [settings.PUBLIC_URL.rstrip("/")]
+    url = settings.PUBLIC_URL.rstrip("/")
+    if url not in cors_origins:
+        cors_origins.append(url)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
