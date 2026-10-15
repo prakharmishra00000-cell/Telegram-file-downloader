@@ -18,6 +18,13 @@ from app.auth.session import session_manager
 logger = logging.getLogger(__name__)
 
 
+def _normalize_api_id(api_id: int) -> int:
+    if api_id > 2147483647 and api_id <= 4294967295:
+        import struct
+        return struct.unpack('i', struct.pack('I', api_id))[0]
+    return api_id
+
+
 class UserClientState:
     """Holds Telegram client and auth state for one user."""
 
@@ -82,6 +89,7 @@ class TelegramClientManager:
         session_string: Optional[str] = None,
     ) -> dict:
         """Restore a Telegram session for a user without sending a code."""
+        api_id = _normalize_api_id(api_id)
         async with self._lock:
             s = self._get_state(user_id)
             await self._disconnect_user(user_id)
@@ -131,6 +139,7 @@ class TelegramClientManager:
         phone: str,
         session_string: Optional[str] = None,
     ) -> dict:
+        api_id = _normalize_api_id(api_id)
         async with self._lock:
             s = self._get_state(user_id)
             await self._disconnect_user(user_id)

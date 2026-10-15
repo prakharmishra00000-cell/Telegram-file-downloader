@@ -42,10 +42,33 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
     setLoading(true)
 
     try {
+      const cleanApiId = apiId.trim()
+      const cleanPhone = phone.trim()
+      const cleanHash = apiHash.trim()
+
+      const digitsOnly = cleanApiId.replace(/\D/g, '')
+      if (cleanApiId.startsWith('+') || digitsOnly.length >= 10) {
+        setError(
+          'API ID must be your 7-9 digit App api_id from https://my.telegram.org (e.g. 20401234), not your phone number. Please enter your phone number in the Phone Number field below.'
+        )
+        setLoading(false)
+        return
+      }
+
+      const numId = parseInt(digitsOnly, 10)
+      if (isNaN(numId) || numId <= 0) {
+        setError('Please enter a valid numeric API ID from https://my.telegram.org.')
+        setLoading(false)
+        return
+      }
+
+      // Automatically cast unsigned 32-bit to signed 32-bit for Telegram MTProto
+      const signed32ApiId = (numId | 0)
+
       const result = await api.login({
-        phone: phone.startsWith('+') ? phone : `+${phone}`,
-        api_id: parseInt(apiId),
-        api_hash: apiHash,
+        phone: cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`,
+        api_id: signed32ApiId,
+        api_hash: cleanHash,
       })
 
       if (result.authenticated) {
@@ -134,33 +157,40 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
           {step === 'credentials' && (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">API ID</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Telegram API ID <span className="text-xs text-gray-500 font-normal">(7-9 digits from my.telegram.org)</span>
+                </label>
                 <input
                   type="text"
                   className="input font-mono text-sm"
-                  placeholder="12345678"
+                  placeholder="e.g. 20401234"
                   value={apiId}
                   onChange={(e) => setApiId(e.target.value)}
                   required
                 />
+                <p className="text-[11px] text-gray-500 mt-1">Found in my.telegram.org under "API development tools" (not your phone number).</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">API Hash</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Telegram API Hash <span className="text-xs text-gray-500 font-normal">(32 characters from my.telegram.org)</span>
+                </label>
                 <input
                   type="text"
                   className="input font-mono text-sm"
-                  placeholder="1a2b3c4d5e6f..."
+                  placeholder="e.g. 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
                   value={apiHash}
                   onChange={(e) => setApiHash(e.target.value)}
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Phone Number</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Phone Number <span className="text-xs text-gray-500 font-normal">(with international country code)</span>
+                </label>
                 <input
                   type="tel"
                   className="input font-mono text-sm"
-                  placeholder="+1234567890"
+                  placeholder="e.g. +919876543210 or +1234567890"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   required

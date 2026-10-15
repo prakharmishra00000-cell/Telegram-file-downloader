@@ -85,9 +85,34 @@ async def auth_status(user=Depends(get_current_user)):
 async def login(req: LoginRequest, user=Depends(get_current_user)):
     user_id, username = user
     try:
-        norm_phone = req.phone if req.phone.startswith("+") else f"+{req.phone}"
+        norm_phone = req.phone.strip()
+        if not norm_phone.startswith("+"):
+            norm_phone = f"+{norm_phone}"
+
+        api_id = req.api_id
+        # Normalize unsigned 32-bit to signed 32-bit
+        if api_id > 2147483647 and api_id <= 4294967295:
+            import struct
+            api_id = struct.unpack('i', struct.pack('I', api_id))[0]
+        elif api_id > 4294967295 or api_id < -2147483648:
+            clean_digits = str(req.api_id).strip()
+            if len(clean_digits) >= 10:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Invalid API ID: You entered a 10+ digit number. "
+                        "Telegram API ID must be your 7-9 digit App ID from https://my.telegram.org (e.g. 20401234), "
+                        "not your phone number."
+                    ),
+                )
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid API ID: Must be a 32-bit integer matching your App ID from https://my.telegram.org.",
+            )
+
+        api_hash = req.api_hash.strip()
         result = await client_manager.start(
-            user_id, req.api_id, req.api_hash, norm_phone
+            user_id, api_id, api_hash, norm_phone
         )
         is_authed = bool(result.get("authenticated"))
         session_str = result.get("session_string")
@@ -95,16 +120,18 @@ async def login(req: LoginRequest, user=Depends(get_current_user)):
         # Save credentials immediately so API ID and Hash are permanent
         await save_telegram_credentials(
             user_id,
-            req.api_id,
-            req.api_hash,
+            api_id,
+            api_hash,
             norm_phone,
             telegram_authed=is_authed,
             session_string=session_str,
         )
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Login failed for user %d: %s", user_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/otp")
