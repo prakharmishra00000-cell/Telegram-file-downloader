@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Optional
 
 from telethon import TelegramClient
@@ -89,12 +90,16 @@ class TelegramClientManager:
         session_string: Optional[str] = None,
     ) -> dict:
         """Restore a Telegram session for a user without sending a code."""
-        api_id = _normalize_api_id(api_id)
+        clean_hash = (api_hash or "").strip()
+        is_bot = bool(re.match(r"^\d+:[\w-]+$", clean_hash))
+        effective_api_id = 2040 if (is_bot or not (1 <= api_id <= 2147483647)) else _normalize_api_id(api_id)
+        effective_api_hash = "b18441a1ff607e10a989891a5462e627" if is_bot else clean_hash
+
         async with self._lock:
             s = self._get_state(user_id)
             await self._disconnect_user(user_id)
-            s.api_id = api_id
-            s.api_hash = api_hash
+            s.api_id = effective_api_id
+            s.api_hash = clean_hash
             s.phone = phone
 
             # Prefer StringSession if available, fallback to file session
@@ -102,13 +107,13 @@ class TelegramClientManager:
             if session_string:
                 telethon_session = StringSession(session_string)
             else:
-                session_path = session_manager.session_path(phone, user_id)
+                session_path = session_manager.session_path(phone or "bot", user_id)
                 telethon_session = str(session_path)
 
             s.client = TelegramClient(
                 telethon_session,
-                api_id,
-                api_hash,
+                effective_api_id,
+                effective_api_hash,
                 device_model="Telegram Document Downloader",
                 system_version="1.0",
                 app_version="1.0.0",
@@ -116,15 +121,16 @@ class TelegramClientManager:
             await s.client.connect()
             if await s.client.is_user_authorized():
                 me = await s.client.get_me()
-                logger.info("User %d session restored as %s", user_id, me.phone)
+                user_label = getattr(me, "username", None) or getattr(me, "first_name", "") or str(getattr(me, "id", user_id))
+                logger.info("User %d session restored as %s", user_id, user_label)
                 self.set_active_user(user_id)
                 saved_session = s.client.session.save() if hasattr(s.client.session, "save") else ""
                 return {
                     "authenticated": True,
-                    "phone": me.phone,
+                    "phone": getattr(me, "phone", None) or (f"@{me.username}" if getattr(me, "username", None) else phone),
                     "telegram_user_id": me.id,
-                    "username": me.username,
-                    "first_name": me.first_name,
+                    "username": getattr(me, "username", None),
+                    "first_name": getattr(me, "first_name", ""),
                     "session_string": saved_session,
                 }
             await s.client.disconnect()
@@ -139,29 +145,52 @@ class TelegramClientManager:
         phone: str,
         session_string: Optional[str] = None,
     ) -> dict:
-        api_id = _normalize_api_id(api_id)
+        clean_hash = (api_hash or "").strip()
+        is_bot = bool(re.match(r"^\d+:[\w-]+$", clean_hash))
+
+        effective_api_id = 2040 if (is_bot or not (1 <= api_id <= 2147483647)) else _normalize_api_id(api_id)
+        effective_api_hash = "b18441a1ff607e10a989891a5462e627" if is_bot else clean_hash
+
         async with self._lock:
             s = self._get_state(user_id)
             await self._disconnect_user(user_id)
-            s.api_id = api_id
-            s.api_hash = api_hash
+            s.api_id = effective_api_id
+            s.api_hash = clean_hash
             s.phone = phone
 
             telethon_session: any
             if session_string:
                 telethon_session = StringSession(session_string)
             else:
-                session_path = session_manager.session_path(phone, user_id)
+                session_path = session_manager.session_path(phone or "bot", user_id)
                 telethon_session = str(session_path)
 
             s.client = TelegramClient(
                 telethon_session,
-                api_id,
-                api_hash,
+                effective_api_id,
+                effective_api_hash,
                 device_model="Telegram Document Downloader",
                 system_version="1.0",
                 app_version="1.0.0",
             )
+
+            # If user provided a Bot Token from @BotFather, log in immediately as Bot (no OTP needed)
+            if is_bot:
+                await s.client.start(bot_token=clean_hash)
+                me = await s.client.get_me()
+                logger.info("Bot authenticated as @%s (%s)", me.username, me.first_name)
+                self.set_active_user(user_id)
+                saved_session = s.client.session.save() if hasattr(s.client.session, "save") else ""
+                return {
+                    "authenticated": True,
+                    "phone": f"@{me.username}" if me.username else "Bot",
+                    "telegram_user_id": me.id,
+                    "username": me.username,
+                    "first_name": me.first_name or me.username,
+                    "session_string": saved_session,
+                    "is_bot": True,
+                }
+
             await s.client.connect()
 
             if await s.client.is_user_authorized():

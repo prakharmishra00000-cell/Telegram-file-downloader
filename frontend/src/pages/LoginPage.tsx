@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { HardDrive, AlertCircle, CheckCircle, Loader2, ArrowLeft, Sparkles } from 'lucide-react'
+import { HardDrive, AlertCircle, CheckCircle, Loader2, ArrowLeft, Sparkles, Bot, User } from 'lucide-react'
 import { api, setDemoMode } from '../api/client'
 import { useAppStore } from '../store/appStore'
 
@@ -14,6 +14,8 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
   const [step, setStep] = useState<'credentials' | 'otp' | '2fa'>(
     initialStatus?.waiting_code ? 'otp' : initialStatus?.waiting_password ? '2fa' : 'credentials'
   )
+  const [authMethod, setAuthMethod] = useState<'bot' | 'user'>('bot')
+  const [botToken, setBotToken] = useState('')
   const [apiId, setApiId] = useState('')
   const [apiHash, setApiHash] = useState('')
   const [phone, setPhone] = useState(initialStatus?.phone || '')
@@ -42,38 +44,45 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
     setLoading(true)
 
     try {
+      const cleanBotToken = botToken.trim()
       const cleanApiId = apiId.trim()
       const cleanPhone = phone.trim()
       const cleanHash = apiHash.trim()
 
-      const digitsOnly = cleanApiId.replace(/\D/g, '')
-      if (cleanApiId.startsWith('+') || digitsOnly.length > 10) {
-        setError(
-          'API ID must be your numeric App api_id from https://my.telegram.org (up to 10 digits), not your phone number. Please enter your phone number in the Phone Number field below.'
-        )
-        setLoading(false)
-        return
-      }
+      // Auto-detect Bot Token from any field
+      const isDirectBot = authMethod === 'bot' && cleanBotToken
+      const isDetectedBot = /^\d+:[\w-]+$/.test(cleanHash) || /^\d+:[\w-]+$/.test(cleanApiId) || /^\d+:[\w-]+$/.test(cleanBotToken)
 
-      const numId = parseInt(digitsOnly, 10)
-      if (isNaN(numId) || numId <= 0 || numId > 4294967295) {
-        setError('Please enter a valid numeric API ID from https://my.telegram.org.')
-        setLoading(false)
-        return
-      }
+      let targetApiId = 2040
+      let targetApiHash = cleanHash
+      let targetPhone = cleanPhone ? (cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`) : ''
 
-      // Automatically cast unsigned 32-bit to signed 32-bit for Telegram MTProto
-      const signed32ApiId = (numId | 0)
+      if (isDirectBot || isDetectedBot) {
+        targetApiId = 2040
+        targetApiHash = isDirectBot ? cleanBotToken : (/^\d+:[\w-]+$/.test(cleanHash) ? cleanHash : cleanApiId)
+        targetPhone = ''
+      } else {
+        const digitsOnly = cleanApiId.replace(/\D/g, '')
+        const numId = parseInt(digitsOnly, 10)
+        if (!isNaN(numId) && numId > 0 && numId <= 4294967295) {
+          targetApiId = (numId | 0)
+        } else {
+          targetApiId = 2040
+        }
+        if (!targetApiHash) {
+          targetApiHash = 'b18441a1ff607e10a989891a5462e627'
+        }
+      }
 
       const result = await api.login({
-        phone: cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`,
-        api_id: signed32ApiId,
-        api_hash: cleanHash,
+        phone: targetPhone,
+        api_id: targetApiId,
+        api_hash: targetApiHash,
       })
 
       if (result.authenticated) {
         setAuth(result)
-        addLog('Authenticated successfully')
+        addLog(result.is_bot ? `Connected as Bot @${result.username}` : 'Authenticated successfully')
         onLogin?.(result)
       } else if (result.waiting_code) {
         setStep('otp')
@@ -154,48 +163,99 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
             </button>
           </div>
 
+          {/* Authentication Method Tabs */}
+          <div className="flex rounded-lg bg-dark-900/80 p-1 mb-5 border border-dark-800">
+            <button
+              type="button"
+              onClick={() => { setAuthMethod('bot'); setError(''); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-medium transition-all ${
+                authMethod === 'bot'
+                  ? 'bg-accent-600 text-white shadow-sm'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>Telegram Bot Token (Instant)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthMethod('user'); setError(''); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-medium transition-all ${
+                authMethod === 'user'
+                  ? 'bg-accent-600 text-white shadow-sm'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>User Account (OTP)</span>
+            </button>
+          </div>
+
           {step === 'credentials' && (
             <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Telegram API ID <span className="text-xs text-gray-500 font-normal">(numeric App ID from my.telegram.org)</span>
-                </label>
-                <input
-                  type="text"
-                  className="input font-mono text-sm"
-                  placeholder="e.g. 20401234"
-                  value={apiId}
-                  onChange={(e) => setApiId(e.target.value)}
-                  required
-                />
-                <p className="text-[11px] text-gray-500 mt-1">Found in my.telegram.org under "API development tools" (not your phone number).</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Telegram API Hash <span className="text-xs text-gray-500 font-normal">(32 characters from my.telegram.org)</span>
-                </label>
-                <input
-                  type="text"
-                  className="input font-mono text-sm"
-                  placeholder="e.g. 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
-                  value={apiHash}
-                  onChange={(e) => setApiHash(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Phone Number <span className="text-xs text-gray-500 font-normal">(with international country code)</span>
-                </label>
-                <input
-                  type="tel"
-                  className="input font-mono text-sm"
-                  placeholder="e.g. +919876543210 or +1234567890"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                />
-              </div>
+              {authMethod === 'bot' ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-200">
+                      Telegram Bot Token
+                    </label>
+                    <span className="text-[11px] text-accent-400 font-medium">Zero OTP required</span>
+                  </div>
+                  <input
+                    type="text"
+                    className="input font-mono text-sm"
+                    placeholder="e.g. 8612061157:AAFcIwSJHANkk8_w01SbsPEq4SgNwIRV87s"
+                    value={botToken}
+                    onChange={(e) => setBotToken(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                    Created via Telegram <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-accent-400 hover:underline">@BotFather</a>. Authenticates permanently without requiring phone numbers or SMS codes.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                      Phone Number <span className="text-xs text-red-400 font-normal">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      className="input font-mono text-sm"
+                      placeholder="e.g. +919876543210"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      required
+                    />
+                    <p className="text-[11px] text-gray-500 mt-1">Include international country code.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                      Telegram API ID <span className="text-xs text-gray-500 font-normal">(Optional — defaults to official client)</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input font-mono text-sm"
+                      placeholder="e.g. 2040"
+                      value={apiId}
+                      onChange={(e) => setApiId(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                      Telegram API Hash <span className="text-xs text-gray-500 font-normal">(Optional — defaults to official client)</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input font-mono text-sm"
+                      placeholder="e.g. b18441a1ff607e10a989891a5462e627"
+                      value={apiHash}
+                      onChange={(e) => setApiHash(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
 
               {error && (
                 <div className="flex items-center gap-2 text-red-400 text-sm bg-red-900/20 border border-red-800/30 rounded-lg p-3">
@@ -210,21 +270,12 @@ export default function LoginPage({ onLogin, onBack, initialStatus }: Props) {
                     <Loader2 className="w-4 h-4 animate-spin" /> Connecting...
                   </span>
                 ) : (
-                  'Sign In'
+                  authMethod === 'bot' ? 'Connect Telegram Bot' : 'Send OTP Code'
                 )}
               </button>
 
               <p className="text-xs text-gray-600 text-center">
                 Your Telegram credentials are encrypted at rest on the server and never shared.
-                Get API credentials from{' '}
-                <a
-                  href="https://my.telegram.org/apps"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent-400 hover:underline"
-                >
-                  my.telegram.org
-                </a>
               </p>
             </form>
           )}

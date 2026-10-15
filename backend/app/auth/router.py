@@ -1,4 +1,5 @@
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -12,9 +13,9 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class LoginRequest(BaseModel):
-    phone: str
-    api_id: int
-    api_hash: str
+    phone: str = ""
+    api_id: int | None = 2040
+    api_hash: str = ""
 
 
 class OTPRequest(BaseModel):
@@ -85,44 +86,33 @@ async def auth_status(user=Depends(get_current_user)):
 async def login(req: LoginRequest, user=Depends(get_current_user)):
     user_id, username = user
     try:
-        norm_phone = req.phone.strip()
-        if not norm_phone.startswith("+"):
-            norm_phone = f"+{norm_phone}"
+        raw_phone = (req.phone or "").strip()
+        norm_phone = raw_phone if (not raw_phone or raw_phone.startswith("+")) else f"+{raw_phone}"
 
-        api_id = req.api_id
-        # Normalize unsigned 32-bit to signed 32-bit
-        if api_id > 2147483647 and api_id <= 4294967295:
+        clean_hash = (req.api_hash or "").strip()
+        is_bot = bool(re.match(r"^\d+:[\w-]+$", clean_hash))
+
+        raw_id = req.api_id or 2040
+        if is_bot or raw_id > 4294967295 or raw_id < -2147483648 or raw_id <= 0:
+            api_id = 2040
+        elif raw_id > 2147483647:
             import struct
-            api_id = struct.unpack('i', struct.pack('I', api_id))[0]
-        elif api_id > 4294967295 or api_id < -2147483648:
-            clean_digits = str(req.api_id).strip()
-            if len(clean_digits) > 10:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "Invalid API ID: You entered an 11+ digit number. "
-                        "Telegram API ID must be your numeric App ID from https://my.telegram.org (up to 4294967295), "
-                        "not your phone number."
-                    ),
-                )
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid API ID: Must be a 32-bit integer matching your App ID from https://my.telegram.org.",
-            )
+            api_id = struct.unpack('i', struct.pack('I', raw_id))[0]
+        else:
+            api_id = raw_id
 
-        api_hash = req.api_hash.strip()
         result = await client_manager.start(
-            user_id, api_id, api_hash, norm_phone
+            user_id, api_id, clean_hash, norm_phone
         )
         is_authed = bool(result.get("authenticated"))
         session_str = result.get("session_string")
         
-        # Save credentials immediately so API ID and Hash are permanent
+        # Save credentials immediately so Bot Token or API ID and Hash are permanent
         await save_telegram_credentials(
             user_id,
             api_id,
-            api_hash,
-            norm_phone,
+            clean_hash,
+            norm_phone or (f"@{result.get('username')}" if result.get("username") else "bot"),
             telegram_authed=is_authed,
             session_string=session_str,
         )
